@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eTeams Passport 自动化测试</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Scrollbar styling */
+    #chat { scroll-behavior: smooth; }
+    #chat::-webkit-scrollbar { width: 6px; }
+    #chat::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 4px; }
+
+    /* Blinking cursor during streaming */
+    .cursor::after {
+      content: "▋";
+      animation: blink 0.7s step-end infinite;
+      color: #6366f1;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Tool call card */
+    .tool-card { border-left: 3px solid #6366f1; }
+    .tool-output-card { border-left: 3px solid #10b981; }
+  </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="bg-indigo-600 text-white px-6 py-3 shadow flex items-center gap-3">
+    <span class="text-2xl">🤖</span>
+    <div class="flex-1">
+      <h1 class="text-lg font-bold leading-tight">eTeams Passport 自动化测试助手</h1>
+      <p class="text-xs text-indigo-200">OpenAI Agents SDK · 千问 Plus · Selenium</p>
+    </div>
+    <button
+      onclick="resetConversation()"
+      class="text-xs bg-indigo-500 hover:bg-indigo-400 px-3 py-1.5 rounded-lg transition"
+      title="清空对话历史，开始新会话"
+    >
+      清空对话
+    </button>
+  </header>
+
+  <!-- Chat area -->
+  <div id="chat" class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+    <!-- Welcome message -->
+    <div class="flex justify-start">
+      <div class="bg-white rounded-2xl rounded-tl-sm shadow px-4 py-3 max-w-xl">
+        <p class="text-gray-700 text-sm">👋 你好！请告诉我要执行哪些测试，例如：</p>
+        <ul class="mt-2 text-sm text-gray-500 list-disc pl-5 space-y-1">
+          <li>打开 eTeams Passport 并切换到简体中文</li>
+          <li>基础登录测试，截图后停留 5 秒并关闭网页</li>
+          <li>只填写默认账号和密码，不提交登录</li>
+          <li>获取当前页面信息</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Input bar -->
+  <div class="bg-white border-t shadow-lg px-4 py-3">
+    <div class="flex gap-2 max-w-3xl mx-auto">
+      <input
+        id="msg-input"
+        type="text"
+        placeholder="输入测试指令，按 Enter 发送…"
+        class="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendMessage(); }"
+      />
+      <button
+        id="send-btn"
+        onclick="sendMessage()"
+        class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-2 rounded-xl text-sm font-medium transition"
+      >
+        发送
+      </button>
+    </div>
+  </div>
+
+<script>
+const chat      = document.getElementById('chat');
+const input     = document.getElementById('msg-input');
+const sendBtn   = document.getElementById('send-btn');
+
+let isStreaming = false;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function scrollBottom() {
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function appendUserMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'flex justify-end';
+  el.innerHTML = `
+    <div class="bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-xl text-sm">
+      ${escapeHtml(text)}
+    </div>`;
+  chat.appendChild(el);
+  scrollBottom();
+}
+
+/** Create an assistant bubble; returns the inner <p> element for appending text. */
+function createAssistantBubble() {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'flex justify-start';
+  wrapper.innerHTML = `
+    <div class="bg-white rounded-2xl rounded-tl-sm shadow px-4 py-3 max-w-2xl text-sm text-gray-800 space-y-2">
+      <p class="assistant-text whitespace-pre-wrap cursor"></p>
+      <div class="tool-events space-y-1"></div>
+    </div>`;
+  chat.appendChild(wrapper);
+  scrollBottom();
+  return {
+    textEl:       wrapper.querySelector('.assistant-text'),
+    toolEventsEl: wrapper.querySelector('.tool-events'),
+  };
+}
+
+function appendToolCall(container, toolName, args) {
+  const card = document.createElement('div');
+  card.className = 'tool-card bg-indigo-50 rounded px-3 py-2 text-xs text-indigo-700';
+  card.innerHTML = `<span class="font-mono font-semibold">🔧 ${escapeHtml(toolName)}</span>` +
+    (args && args !== '{}' ? `<pre class="mt-1 text-indigo-500 whitespace-pre-wrap">${escapeHtml(args)}</pre>` : '');
+  container.appendChild(card);
+  scrollBottom();
+  return card;
+}
+
+function appendToolOutput(container, content) {
+  const card = document.createElement('div');
+  card.className = 'tool-output-card bg-emerald-50 rounded px-3 py-2 text-xs text-emerald-700';
+  card.innerHTML = `<span class="font-semibold">📋 工具结果：</span><pre class="mt-1 whitespace-pre-wrap">${escapeHtml(content)}</pre>`;
+  container.appendChild(card);
+  scrollBottom();
+}
+
+function appendErrorMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'flex justify-start';
+  el.innerHTML = `
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-2xl px-4 py-3 max-w-2xl text-sm">
+      <span class="font-semibold">❌ 错误：</span><pre class="mt-1 whitespace-pre-wrap text-xs">${escapeHtml(text)}</pre>
+    </div>`;
+  chat.appendChild(el);
+  scrollBottom();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setInputEnabled(enabled) {
+  isStreaming = !enabled;
+  input.disabled = !enabled;
+  sendBtn.disabled = !enabled;
+}
+
+// ── Main send logic ──────────────────────────────────────────────────────────
+
+function sendMessage() {
+  if (isStreaming) return;
+  const message = input.value.trim();
+  if (!message) return;
+
+  input.value = '';
+  appendUserMsg(message);
+  setInputEnabled(false);
+
+  const { textEl, toolEventsEl } = createAssistantBubble();
+
+  const evtSource = new EventSource('/chat?' + new URLSearchParams({ _t: Date.now() }));
+
+  // We use fetch + EventSource polyfill via plain fetch + ReadableStream
+  evtSource.close(); // not used — we use fetch below
+
+  fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.text();
+      appendErrorMsg(err);
+      setInputEnabled(true);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete last line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+
+        let payload;
+        try { payload = JSON.parse(raw); } catch { continue; }
+
+        switch (payload.type) {
+          case 'text_delta':
+            textEl.classList.add('cursor');
+            textEl.textContent += payload.content;
+            scrollBottom();
+            break;
+
+          case 'tool_call':
+            appendToolCall(toolEventsEl, payload.tool, payload.args);
+            break;
+
+          case 'tool_output':
+            appendToolOutput(toolEventsEl, payload.content);
+            break;
+
+          case 'error':
+            appendErrorMsg(payload.content);
+            break;
+
+          case 'done':
+            textEl.classList.remove('cursor');
+            setInputEnabled(true);
+            input.focus();
+            break;
+        }
+      }
+    }
+
+    // Ensure cursor removed if stream ends without 'done' event
+    textEl.classList.remove('cursor');
+    setInputEnabled(true);
+    input.focus();
+
+  }).catch((err) => {
+    appendErrorMsg(String(err));
+    setInputEnabled(true);
+  });
+}
+
+// Auto-focus on load
+window.addEventListener('load', () => input.focus());
+
+async function resetConversation() {
+  await fetch('/reset', { method: 'POST' });
+  // Clear the chat UI (keep welcome message)
+  const msgs = chat.querySelectorAll('div.flex');
+  msgs.forEach(el => el.remove());
+  chat.innerHTML = `
+    <div class="flex justify-start">
+      <div class="bg-white rounded-2xl rounded-tl-sm shadow px-4 py-3 max-w-xl">
+        <p class="text-gray-700 text-sm">👋 对话已清空，可以开始新的测试！</p>
+      </div>
+    </div>`;
+  input.focus();
+}
+</script>
+</body>
+</html>
