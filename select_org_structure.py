@@ -52,9 +52,8 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
     """
     Open the real top-right eTeams logo dropdown and select Org. Structure.
 
-    The dropdown is rendered only on a sufficiently wide viewport. It contains
-    17 ``.e10header-dropmenu-item`` rows, with the last row being Log out
-    (Chinese UI: 退出系统). Do not navigate by a hard-coded fallback URL.
+    The dropdown may have varying number of items depending on screen size and scroll position.
+    We check for the presence of "组织架构设置" (Org. Structure) instead of validating exact item count.
     """
 
     def _eteams_dropdown_trigger_exists() -> bool:
@@ -98,7 +97,7 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
         except Exception:
             return False
 
-    def _wait_for_eteams_dropdown_trigger(timeout: int = 15) -> bool:
+    def _wait_for_eteams_dropdown_trigger(timeout: int = 5) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if _eteams_dropdown_trigger_exists():
@@ -213,7 +212,12 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
         last_items: list[str] = []
         while time.monotonic() < deadline:
             last_items = _get_eteams_dropdown_items()
-            if len(last_items) >= 17 and last_items[-1] in ("退出系统", "Log out", "Logout"):
+            # Check if "组织架构设置" is present in the dropdown
+            has_org_structure = any(
+                "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+                for item in last_items
+            )
+            if len(last_items) >= 3 and has_org_structure:
                 return last_items
             time.sleep(0.25)
         return last_items
@@ -432,7 +436,12 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
                 continue
 
             last_items = _wait_for_eteams_dropdown_items()
-            if len(last_items) >= 17 and last_items[-1] in ("退出系统", "Log out", "Logout"):
+            # Check if "组织架构设置" is present
+            has_org_structure = any(
+                "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+                for item in last_items
+            )
+            if len(last_items) >= 3 and has_org_structure:
                 break
 
             try:
@@ -441,25 +450,28 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
                 pass
             time.sleep(0.5)
 
-        if len(last_items) < 17 or last_items[-1] not in ("退出系统", "Log out", "Logout"):
+        # Verify that "组织架构设置" is present in the dropdown
+        has_org_structure = any(
+            "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+            for item in last_items
+        )
+        if not has_org_structure:
             return (
                 "未能选择 Org. Structure：已找到右上角 eTeams 下拉菜单触发器，"
-                f"但菜单校验失败（实际 {len(last_items)} 项，最后一项："
-                f"{last_items[-1] if last_items else '无'}）。"
+                f"但未找到「组织架构设置」菜单项。菜单项：{', '.join(last_items)}"
             )
 
         clicked_text = _click_org_structure_menu_item()
         if not clicked_text:
             return (
-                "未能选择 Org. Structure：右上角 eTeams 下拉菜单已展开且含 17 项，"
+                "未能选择 Org. Structure：右上角 eTeams 下拉菜单已展开，"
                 f"但未找到 Org. Structure/组织架构设置。菜单项：{', '.join(last_items)}"
             )
 
         WebDriverWait(driver, 12, poll_frequency=0.5).until(_org_structure_page_is_open)
         dropdown_closed = _close_eteams_dropdown_if_open()
         return (
-            "已找到右上角 eTeams 下拉菜单（17个选项，最后一项："
-            f"{last_items[-1]}），并点击 {clicked_text}"
+            f"已找到右上角 eTeams 下拉菜单（{len(last_items)}个选项），并点击 {clicked_text}"
             f"{'，且已收起下拉菜单' if dropdown_closed else '，但下拉菜单仍可见'}。"
         )
     except Exception as exc:

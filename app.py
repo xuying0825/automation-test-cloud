@@ -7,16 +7,34 @@ like "能再跑一次吗" correctly refer to previous context.
 
 import asyncio
 import json
+import logging
 import os
 import queue
 import secrets
 import threading
 import traceback
+from datetime import datetime
 from flask import Flask, render_template, request, Response, stream_with_context, session
 
 from agents import Runner
 from agents.stream_events import RawResponsesStreamEvent, RunItemStreamEvent
 from agent_config import create_agent
+
+# Setup logging
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log")
+os.makedirs(log_dir, exist_ok=True)
+
+log_file = os.path.join(log_dir, f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.info(f"日志文件: {log_file}")
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -69,11 +87,18 @@ def _run_agent(
 ) -> None:
     """Run the agent in a dedicated thread and push SSE-payload dicts to out_q."""
 
+    logger.info(f"开始执行 Agent，消息: {message[:100]}...")
+
     async def _async_run() -> None:
         try:
+            logger.info("创建 Agent 实例...")
             agent = create_agent()
             # Build input: prior history + new user message
             input_messages = history + [{"role": "user", "content": message}]
+            logger.info(f"输入消息数: {len(input_messages)}")
+            
+            logger.info("开始流式执行 Agent...")
+
             result = Runner.run_streamed(agent, input=input_messages, max_turns=50)
             async for event in result.stream_events():
 
@@ -117,11 +142,16 @@ def _run_agent(
 
             # After stream completes, persist updated history
             new_history = result.to_input_list()
+
+            logger.info(f"Agent 执行完成，历史消息数: {len(new_history)}")
             out_q.put({"type": "history", "history": new_history})
 
         except Exception:
-            out_q.put({"type": "error", "content": traceback.format_exc()})
+            error_msg = traceback.format_exc()
+            logger.error(f"Agent 执行出错:\n{error_msg}")
+            out_q.put({"type": "error", "content": error_msg})
         finally:
+            logger.info("Agent 执行结束")
             out_q.put(None)  # sentinel: stream finished
 
     asyncio.run(_async_run())
@@ -141,14 +171,19 @@ def chat():
     body = request.get_json(silent=True) or {}
     message = (body.get("message") or "").strip()
     if not message:
+        logger.warning("收到空消息请求")
         return {"error": "message 不能为空"}, 400
+
+    logger.info(f"收到用户消息: {message[:100]}...")
 
     # Assign a session ID if this is a new browser session
     if "sid" not in session:
         session["sid"] = secrets.token_hex(16)
+        logger.info(f"新会话创建: {session['sid']}")
     sid = session["sid"]
 
     history = _get_history(sid)
+    logger.info(f"会话 {sid} 历史消息数: {len(history)}")
 
     out_q: queue.Queue[dict | None] = queue.Queue()
     thread = threading.Thread(target=_run_agent, args=(message, history, out_q), daemon=True)

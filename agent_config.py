@@ -1,6 +1,6 @@
 """
 Agent configuration: uses OpenAI Agents SDK with Qwen Plus (千问 Plus).
-OPENAI_API_KEY environment variable must be set to your Qwen API key.
+OPENAI_API_KEY environment variable must be set in system environment.
 """
 
 import os
