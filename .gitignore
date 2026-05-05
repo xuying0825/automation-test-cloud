@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+.env.*
+
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Test/runtime artifacts
+screenshots/
+*.log
