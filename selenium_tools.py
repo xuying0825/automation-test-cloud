@@ -343,7 +343,24 @@ def _get_driver() -> webdriver.Chrome:
                 "profile.password_manager_leak_detection": False,
             },
         )
-        service = Service(ChromeDriverManager().install())
+        # Try to use local ChromeDriver first, fallback to WebDriver Manager
+        local_driver_paths = [
+            r"C:\WebDriver\chromedriver.exe",  # Windows
+            "/usr/local/bin/chromedriver",      # macOS/Linux
+        ]
+        
+        service = None
+        for driver_path in local_driver_paths:
+            if os.path.exists(driver_path):
+                logger.info(f"使用本地 ChromeDriver: {driver_path}")
+                service = Service(driver_path)
+                break
+        
+        if service is None:
+            logger.info("未找到本地 ChromeDriver，使用 WebDriver Manager 自动下载")
+            from webdriver_manager.chrome import ChromeDriverManager
+            service = Service(ChromeDriverManager().install())
+        
         _driver = webdriver.Chrome(service=service, options=options)
         _driver.implicitly_wait(DEFAULT_IMPLICIT_WAIT_SECONDS)
 
