@@ -52,7 +52,7 @@ def create_agent() -> Agent:
     )
 
     model = OpenAIChatCompletionsModel(
-        model="qwen-plus",
+        model="qwen3.6-plus",
         openai_client=qwen_client,
     )
 
