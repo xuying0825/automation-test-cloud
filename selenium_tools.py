@@ -76,6 +76,87 @@ def _generate_test_group_name() -> str:
     suffix = secrets.token_hex(2)
     return f"{DEFAULT_TEST_GROUP_PREFIX}{timestamp}{suffix}"
 
+
+def _get_windows_descendant_process_ids(root_pid: int | None) -> set[int]:
+    """Return descendant process IDs for a Windows process, best effort."""
+    if os.name != "nt" or not root_pid:
+        return set()
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return set()
+
+    TH32CS_SNAPPROCESS = 0x00000002
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_void_p),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    try:
+        kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel32.Process32FirstW.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESSENTRY32W),
+        ]
+        kernel32.Process32FirstW.restype = wintypes.BOOL
+        kernel32.Process32NextW.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESSENTRY32W),
+        ]
+        kernel32.Process32NextW.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+    except Exception:
+        pass
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot or snapshot == INVALID_HANDLE_VALUE:
+        return set()
+
+    parent_to_children: dict[int, set[int]] = {}
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        has_entry = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while has_entry:
+            pid = int(entry.th32ProcessID)
+            parent_pid = int(entry.th32ParentProcessID)
+            parent_to_children.setdefault(parent_pid, set()).add(pid)
+            has_entry = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    except Exception:
+        return set()
+    finally:
+        try:
+            kernel32.CloseHandle(snapshot)
+        except Exception:
+            pass
+
+    descendants: set[int] = set()
+    pending = list(parent_to_children.get(int(root_pid), set()))
+    while pending:
+        pid = pending.pop()
+        if pid in descendants:
+            continue
+        descendants.add(pid)
+        pending.extend(parent_to_children.get(pid, set()))
+    return descendants
+
+
 def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | None:
     """Find the native HWND for Selenium's Chrome window on Windows."""
     if os.name != "nt":
@@ -91,6 +172,13 @@ def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | Non
         driver_title = (driver.title or "").strip()
     except Exception:
         driver_title = ""
+
+    chrome_driver_pid = None
+    try:
+        chrome_driver_pid = int(driver.service.process.pid)
+    except Exception:
+        chrome_driver_pid = None
+    selenium_child_pids = _get_windows_descendant_process_ids(chrome_driver_pid)
 
     user32 = ctypes.windll.user32
 
@@ -113,6 +201,11 @@ def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | Non
             ctypes.c_int,
         ]
         user32.GetWindowTextW.restype = ctypes.c_int
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
         user32.GetClassNameW.argtypes = [
             wintypes.HWND,
             wintypes.LPWSTR,
@@ -138,8 +231,6 @@ def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | Non
         return buffer.value.strip()
 
     title_key = driver_title.casefold()
-    if not title_key:
-        return None
 
     candidates: list[tuple[int, int, str]] = []
 
@@ -152,11 +243,23 @@ def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | Non
             return True
 
         window_title = _window_text(hwnd)
-        if not window_title:
+        pid_value = wintypes.DWORD(0)
+        try:
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+        except Exception:
+            pid_value = wintypes.DWORD(0)
+        window_pid = int(pid_value.value or 0)
+        is_selenium_child = bool(
+            selenium_child_pids and window_pid in selenium_child_pids
+        )
+
+        if not window_title and not is_selenium_child:
             return True
 
         window_key = window_title.casefold()
         score = 10
+        if is_selenium_child:
+            score += 250
         if class_name == "Chrome_WidgetWin_1":
             score += 5
         if title_key and title_key in window_key:
@@ -319,7 +422,14 @@ def _bring_driver_window_to_front(driver: webdriver.Chrome) -> None:
     if os.name == "nt":
         hwnd = _find_chrome_window_handle_on_windows(driver)
         if hwnd:
-            _activate_window_handle_on_windows(hwnd)
+            activated = _activate_window_handle_on_windows(hwnd)
+            logger.info(
+                "Windows Chrome 窗口激活%s，hwnd=%s",
+                "成功" if activated else "未确认成功",
+                hwnd,
+            )
+        else:
+            logger.warning("Windows 下未找到 Selenium Chrome 原生窗口句柄。")
 
 
 def _get_driver() -> webdriver.Chrome:
@@ -332,9 +442,15 @@ def _get_driver() -> webdriver.Chrome:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1440,1000")
+        # On Windows the Flask chat page can stay in front of the Selenium
+        # browser. Starting maximized plus the explicit focus logic below makes
+        # the Chrome window much easier to notice when a tool is triggered from
+        # the background agent thread.
+        options.add_argument("--start-maximized")
         # Suppress Chrome's browser-level "Save password?" bubble. Selenium
         # cannot reliably locate/click that UI because it is not part of the
         # web page DOM, so the safest automation behavior is to never save.
+        options.add_experimental_option("detach", True)
         options.add_experimental_option(
             "prefs",
             {
@@ -363,6 +479,15 @@ def _get_driver() -> webdriver.Chrome:
         
         _driver = webdriver.Chrome(service=service, options=options)
         _driver.implicitly_wait(DEFAULT_IMPLICIT_WAIT_SECONDS)
+        try:
+            if os.name == "nt":
+                _driver.set_window_position(0, 0)
+                _driver.maximize_window()
+            else:
+                _driver.set_window_size(1440, 1000)
+        except Exception as exc:
+            logger.warning("设置 Chrome 窗口尺寸/位置失败：%s", exc)
+        logger.info("Chrome 浏览器初始化完成，session_id=%s", _driver.session_id)
 
     _bring_driver_window_to_front(_driver)
     return _driver
