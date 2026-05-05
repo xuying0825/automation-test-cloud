@@ -21,12 +21,16 @@ validate every step before moving to the next one:
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 from selenium import webdriver
 from selenium.common.exceptions import (
@@ -73,6 +77,7 @@ class PersonData:
 
 def _generate_person_data() -> PersonData:
     """Generate stable-looking, unique test values for this run."""
+    logger.info("生成测试人员数据")
     timestamp = datetime.now().strftime("%m%d%H%M%S")
     suffix = secrets.token_hex(2)
     compact_suffix = f"{timestamp}{suffix}"
@@ -84,7 +89,7 @@ def _generate_person_data() -> PersonData:
     mobile = TEST_PERSON_MOBILE_OVERRIDE or f"13{mobile_tail}"
 
     account = TEST_PERSON_ACCOUNT_OVERRIDE or f"{prefix}{compact_suffix}"
-    return PersonData(
+    person_data = PersonData(
         name=TEST_PERSON_NAME_OVERRIDE or f"{prefix}人员{timestamp}{suffix}",
         account=account,
         mobile=mobile,
@@ -92,6 +97,9 @@ def _generate_person_data() -> PersonData:
         employee_no=TEST_PERSON_EMPLOYEE_NO_OVERRIDE or f"EMP{compact_suffix}",
         password="Test@123456",
     )
+
+    logger.info(f"生成的人员数据 - 姓名: {person_data.name}, 账号: {person_data.account}, 手机: {person_data.mobile}")
+    return person_data
 
 
 def _normalize_text(value: str | None) -> str:
@@ -1528,6 +1536,7 @@ def _click_random_department_dropdown_candidate(driver: webdriver.Chrome) -> str
     global _LAST_SELECTED_DEPARTMENT
 
     try:
+        logger.debug("开始收集部门候选项")
         candidates = driver.execute_script(
             """
             const newPersonDialog = arguments[0];
@@ -1587,8 +1596,10 @@ def _click_random_department_dropdown_candidate(driver: webdriver.Chrome) -> str
             if _normalize_text(str(candidate))
         ]
         if not candidates:
+            logger.warning("未找到可用的部门候选项")
             return ""
 
+        logger.info(f"找到 {len(candidates)} 个部门候选项")
         # Use Python's secrets module instead of browser Math.random, and avoid
         # repeating the same department back-to-back when there is a choice.
         eligible = [
@@ -1598,6 +1609,8 @@ def _click_random_department_dropdown_candidate(driver: webdriver.Chrome) -> str
         ] or candidates
         selected_text = eligible[secrets.randbelow(len(eligible))]
         selected_index = candidates.index(selected_text)
+        
+        logger.info(f"随机选择部门: {selected_text} (索引: {selected_index}, 上次选择: {_LAST_SELECTED_DEPARTMENT})")
 
         clicked = str(
             driver.execute_script(
@@ -1677,47 +1690,63 @@ def _click_random_department_dropdown_candidate(driver: webdriver.Chrome) -> str
         ).strip()
         if clicked:
             _LAST_SELECTED_DEPARTMENT = selected_text
+            logger.info(f"成功点击部门: {clicked}")
+        else:
+            logger.warning("未能点击部门选项")
         return clicked
-    except Exception:
+    except Exception as e:
+        logger.error(f"选择部门时发生异常: {str(e)}", exc_info=True)
         return ""
 
 
 def _fill_department_field(driver: webdriver.Chrome) -> str:
     """Fill the 新建人员「部门」field by clicking + and picking any dropdown item."""
+
+    logger.info("开始填写部门字段")
     try:
         WebDriverWait(driver, 10, poll_frequency=0.3).until(_department_row_is_present)
     except TimeoutException:
+        logger.warning("未找到「部门」字段或其 + 按钮")
         return "未找到「部门」字段或其 + 按钮。"
 
     existing = _department_row_selected_text(driver)
     if existing:
+        logger.info(f"部门字段已有值: {existing}")
         return f"部门={existing}"
 
+    logger.info("点击部门 + 按钮")
     clicked = _click_department_plus_button(driver)
     if not clicked:
+        logger.warning("未能点击「部门」字段后的 + 按钮")
         return "未能点击「部门」字段后的 + 按钮。"
 
     selected = ""
-    for _ in range(3):
+    for attempt in range(3):
+        logger.debug(f"尝试选择部门 (第 {attempt + 1}/3 次)")
         try:
             selected = WebDriverWait(driver, 8, poll_frequency=0.3).until(
                 lambda drv: _click_random_department_dropdown_candidate(drv)
             )
             break
         except TimeoutException:
+            logger.warning(f"第 {attempt + 1} 次尝试超时，重新点击 + 按钮")
             clicked = _click_department_plus_button(driver)
             if not clicked:
                 break
             time.sleep(0.3)
 
     if not selected:
+        logger.warning("已点击「部门」+ 按钮，但未能选择候选部门")
         return "已点击「部门」+ 按钮，但未能选择候选部门。"
 
+    logger.info(f"成功选择部门: {selected}")
     try:
         confirmed_value = WebDriverWait(driver, 8, poll_frequency=0.3).until(
             lambda drv: _department_row_selected_text(drv)
         )
+        logger.info(f"确认部门字段值: {confirmed_value}")
     except TimeoutException:
+        logger.warning("未能在部门字段中确认选择的值，使用选中的文本")
         confirmed_value = selected
 
     if confirmed_value and "随机候选" in selected and confirmed_value in selected:
@@ -2689,6 +2718,7 @@ def _create_new_person(driver: webdriver.Chrome) -> str:
     review_pause_result = _pause_before_save_for_review()
     step_results.append(f"步骤5-保存前停留：{review_pause_result}")
 
+    logger.info("步骤5-保存人员信息")
     save_result = _save_new_person_and_wait(driver, person)
     step_results.append(f"步骤5-保存：{save_result}")
     detail_open_after_save = _person_detail_page_is_open(driver, person.name)
@@ -2700,23 +2730,34 @@ def _create_new_person(driver: webdriver.Chrome) -> str:
         or detail_open_after_save
     )
     save_failure_markers = ("校验失败", "未确认", "失败", "错误", "不能为空", "请选择", "请输入")
+    
     if save_success and not any(marker in save_result for marker in save_failure_markers):
+        logger.info("步骤5-保存成功，继续执行后续步骤")
+        
+        logger.info("步骤6：关闭人员详情页")
         close_result = _close_person_detail_page(driver, person)
         step_results.append(f"步骤6-关闭详情页：{close_result}")
         if not close_result.startswith(("已点击", "未检测到")):
+            logger.warning(f"步骤6失败: {close_result}")
             return "未能完成新建人员后的详情页关闭：" + " ".join(step_results)
+        logger.info("步骤6完成")
 
+        logger.info("步骤7：搜索验证新建人员")
         search_result = _search_created_person_in_human_resources(driver, person)
         step_results.append(f"步骤7-搜索验证：{search_result}")
         if not search_result.startswith("已"):
+            logger.warning(f"步骤7失败: {search_result}")
             return "未能完成新建人员后的搜索验证：" + " ".join(step_results)
+        logger.info("步骤7完成")
 
+        logger.info("新建人员流程全部完成")
         return (
             f"已完成新建人员流程，并已搜索验证创建成功。"
             f"人员姓名：{person.name}，账号：{person.account}。"
             + " ".join(step_results)
         )
 
+    logger.warning(f"新建人员流程失败或未能确认成功")
     return "未能确认新建人员成功：" + " ".join(step_results)
 
 
@@ -2731,7 +2772,10 @@ def create_new_person(driver: webdriver.Chrome) -> str:
         Chinese status text containing each validated step and the generated
         person values that are safe to report (password is never returned).
     """
-    return _create_new_person(driver)
+    logger.info("调用 create_new_person 工具")
+    result = _create_new_person(driver)
+    logger.info(f"create_new_person 结果: {result[:200]}...")
+    return result
 
 
 __all__ = ["create_new_person"]

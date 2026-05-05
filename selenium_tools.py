@@ -6,6 +6,7 @@ Each tool is a Python function decorated with @function_tool for use with the
 openai-agents SDK.
 """
 
+import logging
 import os
 import secrets
 import time
@@ -25,12 +26,15 @@ from selenium.common.exceptions import (
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+# Setup logger
+logger = logging.getLogger(__name__)
 from create_public_group import create_public_group as _standalone_create_public_group
 from create_new_person import create_new_person as _standalone_create_new_person
 from edit_person import (
     edit_person_employee_no_and_hire_date
     as _standalone_edit_person_employee_no_and_hire_date,
 )
+
 from select_org_structure import select_org_structure as _standalone_select_org_structure
 
 # Global browser instance shared across tool calls within a session
@@ -42,7 +46,7 @@ DEFAULT_ACCOUNT = os.environ.get("ETEAMS_ACCOUNT", "13636409628")
 _DEFAULT_PASSWORD = os.environ.get("ETEAMS_PASSWORD", "xuying@0825")
 TEST_GROUP_NAME_OVERRIDE = os.environ.get("ETEAMS_TEST_GROUP_NAME", "").strip()
 DEFAULT_TEST_GROUP_PREFIX = os.environ.get("ETEAMS_TEST_GROUP_PREFIX", "xuyingtest")
-DEFAULT_CLOSE_DELAY_SECONDS = int(os.environ.get("ETEAMS_CLOSE_DELAY_SECONDS", "15"))
+DEFAULT_CLOSE_DELAY_SECONDS = int(os.environ.get("ETEAMS_CLOSE_DELAY_SECONDS", "5"))
 DEFAULT_BASIC_LOGIN_CLOSE_DELAY_SECONDS = int(
     os.environ.get("ETEAMS_BASIC_LOGIN_CLOSE_DELAY_SECONDS", "5")
 )
@@ -70,7 +74,6 @@ def _generate_test_group_name() -> str:
     timestamp = datetime.now().strftime("%m%d%H%M%S")
     suffix = secrets.token_hex(2)
     return f"{DEFAULT_TEST_GROUP_PREFIX}{timestamp}{suffix}"
-
 
 def _find_chrome_window_handle_on_windows(driver: webdriver.Chrome) -> int | None:
     """Find the native HWND for Selenium's Chrome window on Windows."""
@@ -322,6 +325,7 @@ def _get_driver() -> webdriver.Chrome:
     """Get or create the Chrome driver and keep its window in front."""
     global _driver
     if _driver is None:
+        logger.info("初始化 Chrome 浏览器...")
         options = webdriver.ChromeOptions()
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
@@ -1182,10 +1186,8 @@ def _org_structure_page_is_open(driver: webdriver.Chrome) -> bool:
 def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
     """
     Open the real top-right eTeams logo dropdown and select Org. Structure.
-
-    The dropdown is rendered only on a sufficiently wide viewport. It contains
-    17 ``.e10header-dropmenu-item`` rows, with the last row being Log out
-    (Chinese UI: 退出系统). Do not navigate by a hard-coded fallback URL.
+    The dropdown may have varying number of items depending on screen size and scroll position.
+    We check for the presence of "组织架构设置" (Org. Structure) instead of validating exact item count.
     """
 
     def _eteams_dropdown_trigger_exists() -> bool:
@@ -1229,7 +1231,7 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
         except Exception:
             return False
 
-    def _wait_for_eteams_dropdown_trigger(timeout: int = 15) -> bool:
+    def _wait_for_eteams_dropdown_trigger(timeout: int = 5) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if _eteams_dropdown_trigger_exists():
@@ -1344,7 +1346,12 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
         last_items: list[str] = []
         while time.monotonic() < deadline:
             last_items = _get_eteams_dropdown_items()
-            if len(last_items) >= 17 and last_items[-1] in ("退出系统", "Log out", "Logout"):
+            # Check if "组织架构设置" is present in the dropdown
+            has_org_structure = any(
+                "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+                for item in last_items
+            )
+            if len(last_items) >= 3 and has_org_structure:
                 return last_items
             time.sleep(0.25)
         return last_items
@@ -1440,7 +1447,12 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
                 continue
 
             last_items = _wait_for_eteams_dropdown_items()
-            if len(last_items) >= 17 and last_items[-1] in ("退出系统", "Log out", "Logout"):
+            # Check if "组织架构设置" is present
+            has_org_structure = any(
+                "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+                for item in last_items
+            )
+            if len(last_items) >= 3 and has_org_structure:
                 break
 
             try:
@@ -1449,24 +1461,27 @@ def _select_org_structure_from_top_right_menu(driver: webdriver.Chrome) -> str:
                 pass
             time.sleep(0.5)
 
-        if len(last_items) < 17 or last_items[-1] not in ("退出系统", "Log out", "Logout"):
+        # Verify that "组织架构设置" is present in the dropdown
+        has_org_structure = any(
+            "组织架构设置" in item or "Org. Structure" in item or "Org.Structure" in item
+            for item in last_items
+        )
+        if not has_org_structure:
             return (
                 "未能选择 Org. Structure：已找到右上角 eTeams 下拉菜单触发器，"
-                f"但菜单校验失败（实际 {len(last_items)} 项，最后一项："
-                f"{last_items[-1] if last_items else '无'}）。"
+                f"但未找到「组织架构设置」菜单项。菜单项：{', '.join(last_items)}"
             )
 
         clicked_text = _click_org_structure_menu_item()
         if not clicked_text:
             return (
-                "未能选择 Org. Structure：右上角 eTeams 下拉菜单已展开且含 17 项，"
+                "未能选择 Org. Structure：右上角 eTeams 下拉菜单已展开，"
                 f"但未找到 Org. Structure/组织架构设置。菜单项：{', '.join(last_items)}"
             )
 
         WebDriverWait(driver, 12, poll_frequency=0.5).until(_org_structure_page_is_open)
         return (
-            "已找到右上角 eTeams 下拉菜单（17个选项，最后一项："
-            f"{last_items[-1]}），并点击 {clicked_text}。"
+            f"已找到右上角 eTeams 下拉菜单（{len(last_items)}个选项），并点击 {clicked_text}。"
         )
     except Exception as exc:
         return f"未能选择 Org. Structure：{str(exc)}"
@@ -2157,7 +2172,6 @@ def create_new_person(driver: webdriver.Chrome | None = None) -> str:
     driver = driver or _get_driver()
     return _standalone_create_new_person(driver)
 
-
 def edit_person(
     driver: webdriver.Chrome | None = None,
     person_name: str = "",
@@ -2189,7 +2203,6 @@ def edit_person(
         employee_no=employee_no,
         hire_date=hire_date,
     )
-
 
 @function_tool(name_override="select_org_structure")
 def select_org_structure_tool() -> str:
@@ -2243,7 +2256,6 @@ def edit_person_tool(
         employee_no=employee_no,
         hire_date=hire_date,
     )
-
 
 @function_tool(name_override="login_and_create_new_person")
 def login_and_create_new_person(
@@ -2340,7 +2352,6 @@ def login_and_create_new_person(
         return "❌ 超时：无法找到登录表单元素或新建人员页面元素，请确认页面已正确加载。"
     except Exception as e:
         return f"❌ 登录并新建人员过程发生异常: {str(e)}"
-
 
 @function_tool(name_override="login_and_edit_person")
 def login_and_edit_person(
@@ -2459,7 +2470,10 @@ def _open_eteams_login_page() -> str:
 @function_tool
 def open_browser() -> str:
     """打开 Chrome 浏览器，进入 eTeams Passport，并将语言设置为简体中文。"""
-    return _open_eteams_login_page()
+    logger.info("调用 open_browser 工具")
+    result = _open_eteams_login_page()
+    logger.info(f"open_browser 结果: {result[:200]}")
+    return result
 
 
 @function_tool
@@ -2594,7 +2608,10 @@ def login(username: str = DEFAULT_ACCOUNT, password: str = "") -> str:
         username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
         password: 登录密码。可留空以使用本地配置的密码。
     """
-    return _run_basic_login_test(username=username, password=password)
+    logger.info(f"调用 login 工具，账号: {_mask_account(username)}")
+    result = _run_basic_login_test(username=username, password=password)
+    logger.info(f"login 结果: {result[:200]}...")
+    return result
 
 
 @function_tool(name_override="login_and_create_public_group")
@@ -2604,7 +2621,7 @@ def login_and_create_public_group(
 ) -> str:
     """
     完整公共组流程：登录 -> 进入 Org. Structure -> 创建公共组 ->
-    停留 15 秒 -> 关闭浏览器。
+    停留 5 秒 -> 关闭浏览器。
 
     仅当用户明确要求创建公共组时使用；基础登录测试请使用 login。
     """
