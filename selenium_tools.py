@@ -30,6 +30,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 logger = logging.getLogger(__name__)
 from create_public_group import create_public_group as _standalone_create_public_group
 from create_new_person import create_new_person as _standalone_create_new_person
+from create_new_department import create_new_department as _standalone_create_new_department
 from edit_person import (
     edit_person_employee_no_and_hire_date
     as _standalone_edit_person_employee_no_and_hire_date,
@@ -2172,6 +2173,32 @@ def create_new_person(driver: webdriver.Chrome | None = None) -> str:
     driver = driver or _get_driver()
     return _standalone_create_new_person(driver)
 
+
+def create_new_department(
+    driver: webdriver.Chrome | None = None,
+    department_name: str = "",
+) -> str:
+    """
+    Open Org. Structure / 组织维护 / 分部信息 and create a new department.
+
+    Preconditions:
+    - The browser should already be logged in to eTeams.
+    - The caller should have entered Org. Structure; the standalone helper
+      contains the already-tested department creation steps.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        department_name: Department name to create. If omitted, a random name
+            prefixed by ``xuyingtest`` is generated.
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_new_department(
+        driver,
+        department_name=department_name or None,
+    )
+
+
 def edit_person(
     driver: webdriver.Chrome | None = None,
     person_name: str = "",
@@ -2233,6 +2260,18 @@ def create_new_person_tool() -> str:
     保存前停留 5 秒，然后保存并搜索验证。
     """
     return create_new_person()
+
+
+@function_tool(name_override="create_new_department")
+def create_new_department_tool(department_name: str = "") -> str:
+    """
+    在已登录并进入 Org. Structure 的 eTeams 中，进入组织维护/分部信息，
+    点击「新建部门」，填写部门名称并保存。
+
+    Args:
+        department_name: 要创建的部门名称；留空时自动生成 xuyingtest + 时间戳。
+    """
+    return create_new_department(department_name=department_name)
 
 
 @function_tool(name_override="edit_person")
@@ -2352,6 +2391,112 @@ def login_and_create_new_person(
         return "❌ 超时：无法找到登录表单元素或新建人员页面元素，请确认页面已正确加载。"
     except Exception as e:
         return f"❌ 登录并新建人员过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_new_department")
+def login_and_create_new_department(
+    department_name: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整新建部门流程：登录 -> 进入 Org. Structure -> 组织维护 ->
+    分部信息 -> 新建部门 -> 填写部门名称 -> 保存 -> 停留 5 秒 -> 关闭浏览器。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+
+    Args:
+        department_name: 要创建的部门名称；留空时自动生成 xuyingtest + 时间戳。
+        username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
+        password: 登录密码。可留空以使用本地配置的密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        department_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                department_result = create_new_department(
+                    driver,
+                    department_name=department_name,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            department_success = (
+                "✅ 部门创建成功" in department_result
+                and "❌" not in department_result
+                and "错误" not in department_result
+            )
+
+            if org_structure_success and department_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新建部门。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新建部门完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + department_result if department_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新建部门。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新建部门。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建部门页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并新建部门过程发生异常: {str(e)}"
+
 
 @function_tool(name_override="login_and_edit_person")
 def login_and_edit_person(
