@@ -7,7 +7,10 @@ Usage:
     result = create_public_group(driver, group_name="my-group")
 
 Precondition: ``driver`` is already on the Org. Structure page. Usually call
-``select_org_structure(driver)`` first.
+``select_org_structure(driver)`` first. The helper fills ``群组名称`` and, when
+the switch-controlled ``所属机构`` selector is visible, randomly chooses an
+available organization using the same plus/dropdown pattern as the 新建人员
+「部门」field. If that switch is off and the field is absent, the helper skips it.
 """
 
 import os
@@ -25,6 +28,8 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     TimeoutException,
 )
+
+from field_plus_selector import fill_field_plus_selector
 
 ORG_STRUCTURE_PATH = "/hrm/orgsetting/departmentSetting"
 TEST_GROUP_NAME_OVERRIDE = os.environ.get("ETEAMS_TEST_GROUP_NAME", "").strip()
@@ -159,6 +164,44 @@ def _new_group_dialog_is_open(driver: webdriver.Chrome) -> bool:
         )
     except Exception:
         return False
+
+
+def _get_visible_new_group_dialog(driver: webdriver.Chrome):
+    """Return the visible 新建群组 dialog element, if present."""
+    try:
+        return driver.execute_script(
+            """
+            const visible = (el) => {
+              if (!el) return false;
+              const style = window.getComputedStyle(el);
+              const rect = el.getBoundingClientRect();
+              return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && Number(style.opacity || 1) > 0
+                && rect.width > 0
+                && rect.height > 0
+                && rect.right > 0
+                && rect.bottom > 0
+                && rect.left < window.innerWidth
+                && rect.top < window.innerHeight;
+            };
+            const normalize = (value) => String(value || '')
+              .replace(/\\s+/g, ' ')
+              .trim();
+            const dialogs = Array.from(document.querySelectorAll(
+              '.ui-dialog-wrap-right, .ui-dialog-wrap, [role="dialog"]'
+            )).filter((el) =>
+              visible(el) && normalize(el.innerText || el.textContent).includes('新建群组')
+            );
+            dialogs.sort((a, b) =>
+              b.getBoundingClientRect().left - a.getBoundingClientRect().left
+              || a.getBoundingClientRect().top - b.getBoundingClientRect().top
+            );
+            return dialogs[0] || null;
+            """
+        )
+    except Exception:
+        return None
 
 
 def _click_left_group_management_menu(driver: webdriver.Chrome) -> str:
@@ -389,28 +432,60 @@ def _find_group_name_input(driver: webdriver.Chrome):
             const normalize = (value) => String(value || '')
               .replace(/\\s+/g, ' ')
               .trim();
+            const cleanLabel = (value) => normalize(value)
+              .replace(/[\\*＊:：]/g, '')
+              .trim();
+            const findFieldItem = (dialog, labels) => {
+              const expected = labels.map(cleanLabel).filter(Boolean);
+              for (const label of Array.from(dialog.querySelectorAll('.ui-formItem-label-span, [title], label, span, div'))) {
+                if (!visible(label)) continue;
+                const rawText = normalize(
+                  label.innerText
+                  || label.textContent
+                  || label.getAttribute('title')
+                  || label.getAttribute('aria-label')
+                );
+                const text = cleanLabel(rawText);
+                if (!text) continue;
+                if (!expected.some((item) => text === item)) continue;
+                const formItem = label.closest('.ui-formItem')
+                  || label.closest('.ui-form-col')
+                  || label.closest('.ui-form-item')
+                  || label.closest('.form-item')
+                  || label.closest('.form-row')
+                  || label.parentElement;
+                if (formItem && visible(formItem)) return formItem;
+              }
+              return null;
+            };
             const dialogs = Array.from(document.querySelectorAll('.ui-dialog-wrap-right, .ui-dialog-wrap'))
               .filter((el) => visible(el) && normalize(el.innerText || el.textContent).includes('新建群组'));
             const dialog = dialogs.sort((a, b) => b.getBoundingClientRect().left - a.getBoundingClientRect().left)[0];
             if (!dialog) return null;
 
+            const groupNameItem = findFieldItem(dialog, ['群组名称', 'Group Name', 'Group name']);
             const candidates = [];
-            for (const input of Array.from(dialog.querySelectorAll('input'))) {
+            const inputRoot = groupNameItem || dialog;
+            for (const input of Array.from(inputRoot.querySelectorAll('input'))) {
               if (!visible(input) || input.disabled || input.readOnly) continue;
               const type = String(input.getAttribute('type') || 'text').toLowerCase();
               if (!['', 'text', 'search'].includes(type)) continue;
               const className = String(input.className || '');
               if (className.includes('number')) continue;
               const rect = input.getBoundingClientRect();
+              const placeholder = input.getAttribute('placeholder') || '';
               candidates.push({
                 element: input,
                 top: rect.top,
                 left: rect.left,
-                placeholder: input.getAttribute('placeholder') || '',
+                score: groupNameItem ? 100 : (
+                  /群组名称|group\\s*name/i.test(placeholder) ? 50 : 0
+                ),
+                placeholder,
                 value: input.value || ''
               });
             }
-            candidates.sort((a, b) => a.top - b.top || a.left - b.left);
+            candidates.sort((a, b) => b.score - a.score || a.top - b.top || a.left - b.left);
             return candidates[0]?.element || null;
             """
         )
@@ -488,6 +563,21 @@ def _ensure_new_group_type_is_public(driver: webdriver.Chrome) -> str:
         return "未确认群组类型为公共组。"
     except Exception as exc:
         return f"确认群组类型失败：{str(exc)}"
+
+
+def _fill_group_organization_field(driver: webdriver.Chrome) -> str:
+    """
+    Fill 新建群组「所属机构」if the switch-controlled field is enabled.
+
+    Some tenants/settings hide this field behind a switch. When the field is
+    absent, that is a valid scenario and should not block group creation.
+    """
+    return fill_field_plus_selector(
+        driver,
+        "所属机构",
+        root_getter=_get_visible_new_group_dialog,
+        optional=True,
+    )
 
 
 def _click_save_new_group(driver: webdriver.Chrome) -> str:
@@ -706,6 +796,8 @@ def _create_public_group(
 ) -> str:
     """
     In Org. Structure, open left 群组管理 and create/confirm a public group.
+    The 新建群组 form fills 群组名称 and randomly selects 所属机构 before save
+    when that switch-controlled field is enabled.
 
     Re-running the test is idempotent: if the group already exists, it is
     treated as a successful verification instead of deleting or duplicating it.
@@ -730,9 +822,23 @@ def _create_public_group(
     if not fill_result.startswith("已填写"):
         return f"未能创建公共组 {group_name}：{group_management_result} {new_dialog_result} {fill_result}"
 
+    organization_result = _fill_group_organization_field(driver)
+    organization_ok = organization_result.startswith((
+        "所属机构=",
+        "所属机构未启用",
+    ))
+    if not organization_ok:
+        return (
+            f"未能创建公共组 {group_name}：{group_management_result} "
+            f"{new_dialog_result} {fill_result} {organization_result}"
+        )
+
     type_result = _ensure_new_group_type_is_public(driver)
     if not type_result.startswith("群组类型已确认"):
-        return f"未能创建公共组 {group_name}：{group_management_result} {new_dialog_result} {fill_result} {type_result}"
+        return (
+            f"未能创建公共组 {group_name}：{group_management_result} "
+            f"{new_dialog_result} {fill_result} {organization_result} {type_result}"
+        )
 
     save_result = _save_new_group_and_wait(driver, group_name)
     if save_result.startswith(("已保存", "群组")):
@@ -740,19 +846,21 @@ def _create_public_group(
         verify_result = "并已在公共群组管理中验证可见" if verified else "保存后未能再次搜索验证可见"
         return (
             f"{group_management_result} {new_dialog_result} {fill_result} "
-            f"{type_result} {save_result} {verify_result}。"
+            f"{organization_result} {type_result} {save_result} {verify_result}。"
         )
 
     return (
         f"未能确认公共组 {group_name} 创建成功："
         f"{group_management_result} {new_dialog_result} {fill_result} "
-        f"{type_result} {save_result}"
+        f"{organization_result} {type_result} {save_result}"
     )
 
 
 def create_public_group(driver: webdriver.Chrome, group_name: str = "") -> str:
     """
     Open left-side 群组管理 in Org. Structure and create a public group.
+    The form fills 群组名称 and, when enabled, randomly selects 所属机构 before save.
+    If the 所属机构 switch is off and the field is absent, it is skipped.
 
     Args:
         driver: Existing Selenium Chrome driver already on Org. Structure.
