@@ -2223,48 +2223,14 @@ def _create_public_group(
 ) -> str:
     """
     In Org. Structure, open left 群组管理 and create/confirm a public group.
+    Delegates to ``create_public_group.py`` so the current implementation also
+    fills the 新建群组「所属机构」field by randomly choosing an organization when
+    that switch-controlled field is enabled.
 
     Re-running the test is idempotent: if the group already exists, it is
     treated as a successful verification instead of deleting or duplicating it.
     """
-    group_name = (group_name or "").strip() or _generate_test_group_name()
-
-    group_management_result = _open_public_group_management(driver)
-    if not group_management_result.startswith("已"):
-        return f"未能创建公共组 {group_name}：{group_management_result}"
-
-    if _search_public_group_by_name(driver, group_name):
-        return (
-            f"{group_management_result} 公共组 {group_name} 已存在，"
-            "本次按已验证通过处理。"
-        )
-
-    new_dialog_result = _open_new_group_dialog(driver)
-    if not new_dialog_result.startswith(("已", "新建群组弹窗")):
-        return f"未能创建公共组 {group_name}：{group_management_result} {new_dialog_result}"
-
-    fill_result = _fill_new_group_name(driver, group_name)
-    if not fill_result.startswith("已填写"):
-        return f"未能创建公共组 {group_name}：{group_management_result} {new_dialog_result} {fill_result}"
-
-    type_result = _ensure_new_group_type_is_public(driver)
-    if not type_result.startswith("群组类型已确认"):
-        return f"未能创建公共组 {group_name}：{group_management_result} {new_dialog_result} {fill_result} {type_result}"
-
-    save_result = _save_new_group_and_wait(driver, group_name)
-    if save_result.startswith(("已保存", "群组")):
-        verified = _search_public_group_by_name(driver, group_name)
-        verify_result = "并已在公共群组管理中验证可见" if verified else "保存后未能再次搜索验证可见"
-        return (
-            f"{group_management_result} {new_dialog_result} {fill_result} "
-            f"{type_result} {save_result} {verify_result}。"
-        )
-
-    return (
-        f"未能确认公共组 {group_name} 创建成功："
-        f"{group_management_result} {new_dialog_result} {fill_result} "
-        f"{type_result} {save_result}"
-    )
+    return _standalone_create_public_group(driver, group_name=group_name)
 
 
 def select_org_structure(driver: webdriver.Chrome | None = None) -> str:
@@ -2289,6 +2255,9 @@ def create_public_group(
 ) -> str:
     """
     Open left-side 群组管理 in Org. Structure and create a public group.
+    The new-group form fills 群组名称 and randomly selects 所属机构 before save
+    when that switch-controlled field is enabled. If the field is absent, it is
+    skipped.
 
     Preconditions:
     - Call ``select_org_structure(driver)`` first, or otherwise make sure the
@@ -2387,6 +2356,8 @@ def select_org_structure_tool() -> str:
 def create_public_group_tool(group_name: str = "") -> str:
     """
     在 Org. Structure 页面进入左侧「群组管理」，新建一个公共组。
+    会填写「群组名称」；如果开关启用了「所属机构」字段，则按新建人员
+    「部门」字段相同方式随机选择机构；如果字段不存在则跳过。
 
     Args:
         group_name: 要创建的群组名称；留空时自动生成随机名称。
@@ -2399,7 +2370,7 @@ def create_new_person_tool() -> str:
     """
     在已登录的 eTeams 中进入 Org. Structure，选择左侧「组织维护」、
     「人力资源」标签页，点击「新建人员」，填写必填字段和部门，
-    保存前停留 5 秒，然后保存并搜索验证。
+    随机选择职称，保存前停留 5 秒，然后保存并搜索验证。
     """
     return create_new_person()
 
@@ -2445,7 +2416,7 @@ def login_and_create_new_person(
 ) -> str:
     """
     从 eTeams Passport 执行完整流程：登录 -> 进入 Org. Structure ->
-    组织维护 -> 人力资源 -> 新建人员 -> 填写必填字段和部门 ->
+    组织维护 -> 人力资源 -> 新建人员 -> 填写必填字段和部门 -> 随机选择职称 ->
     保存前停留 5 秒 -> 保存 -> 搜索验证。
 
     如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
@@ -2908,7 +2879,7 @@ def login_and_create_public_group(
 ) -> str:
     """
     完整公共组流程：登录 -> 进入 Org. Structure -> 创建公共组 ->
-    停留 5 秒 -> 关闭浏览器。
+    填写群组名称 -> 如果有所属机构则随机选择 -> 停留 5 秒 -> 关闭浏览器。
 
     仅当用户明确要求创建公共组时使用；基础登录测试请使用 login。
     """

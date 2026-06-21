@@ -1,0 +1,4 @@
+interface:
+  display_name: "Field Plus Selector"
+  short_description: "Reusable Selenium field-plus selector helper"
+  default_prompt: "Use $field-plus-selector to add Selenium automation for a form field followed by a plus selector."

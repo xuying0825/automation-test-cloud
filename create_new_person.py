@@ -13,7 +13,7 @@ validate every step before moving to the next one:
 2. Select the left-side secondary menu item 组织维护.
 3. Select the 人力资源 tab.
 4. Click 新建人员.
-5. Fill required fields plus one department in the new-person dialog.
+5. Fill required fields plus one department and one job title in the new-person dialog.
 6. Keep the filled form visible briefly, then save.
 7. Keep the saved person's detail page visible briefly, then close it.
 8. Search the 人力资源 page for the newly-created person and verify it appears.
@@ -43,6 +43,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
+from field_plus_selector import fill_field_plus_selector
 from search_persion import _search_created_person_in_human_resources
 from select_org_structure import select_org_structure as _select_org_structure
 
@@ -1754,6 +1755,16 @@ def _fill_department_field(driver: webdriver.Chrome) -> str:
     return f"部门={confirmed_value or selected}"
 
 
+def _fill_job_title_field(driver: webdriver.Chrome) -> str:
+    """Fill the 新建人员「职称」field by clicking + and picking a random option."""
+    return fill_field_plus_selector(
+        driver,
+        "职称",
+        root_getter=_get_visible_new_person_dialog,
+        optional=False,
+    )
+
+
 def _pause_before_save_for_review(seconds: int = BEFORE_SAVE_REVIEW_DELAY_SECONDS) -> str:
     """Pause before saving so the filled form can be visually inspected."""
     seconds = max(0, int(seconds))
@@ -1763,7 +1774,7 @@ def _pause_before_save_for_review(seconds: int = BEFORE_SAVE_REVIEW_DELAY_SECOND
 
 
 def _fill_required_person_fields(driver: webdriver.Chrome, person: PersonData) -> str:
-    """Fill required new-person fields plus one department selector."""
+    """Fill required new-person fields plus department and job-title selectors."""
     dialog = WebDriverWait(driver, 10, poll_frequency=0.3).until(
         lambda drv: _get_visible_new_person_dialog(drv)
     )
@@ -1854,6 +1865,11 @@ def _fill_required_person_fields(driver: webdriver.Chrome, person: PersonData) -
         return f"部门信息填写失败：{department_result}"
     filled.append(department_result)
 
+    job_title_result = _fill_job_title_field(driver)
+    if not job_title_result.startswith("职称="):
+        return f"职称信息填写失败：{job_title_result}"
+    filled.append(job_title_result)
+
     # Re-read detected controls and make sure required text-like controls are no
     # longer empty before moving to Save.
     empty_required: list[str] = []
@@ -1870,7 +1886,7 @@ def _fill_required_person_fields(driver: webdriver.Chrome, person: PersonData) -
     if empty_required:
         return "必填字段仍为空，停止保存：" + "、".join(empty_required) + "。"
 
-    return "已填写并验证新建人员必填字段及部门信息：" + "；".join(filled) + "。"
+    return "已填写并验证新建人员必填字段、部门及职称信息：" + "；".join(filled) + "。"
 
 
 def _click_save_new_person(driver: webdriver.Chrome) -> str:
