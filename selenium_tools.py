@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 from create_public_group import create_public_group as _standalone_create_public_group
 from create_new_person import create_new_person as _standalone_create_new_person
 from create_new_department import create_new_department as _standalone_create_new_department
+from create_new_enterprise import (
+    create_new_enterprise as _standalone_create_new_enterprise,
+    create_new_enterprise_with_department_and_contact as _standalone_create_new_enterprise_with_department_and_contact,
+    create_new_enterprise_with_department as _standalone_create_new_enterprise_with_department,
+)
 from edit_person import (
     edit_person_employee_no_and_hire_date
     as _standalone_edit_person_employee_no_and_hire_date,
@@ -2310,6 +2315,120 @@ def create_new_department(
     )
 
 
+def create_new_enterprise(
+    driver: webdriver.Chrome | None = None,
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    Open Org. Structure / 外部组织维护 and create a new enterprise.
+
+    Preconditions:
+    - The browser should already be logged in to eTeams.
+    - The helper will enter/verify Org. Structure before continuing.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        enterprise_name: 企业名称；留空时自动生成 xuyingtest企业 + 时间戳。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        remark: 备注信息；留空时自动生成自动化测试备注。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_new_enterprise(
+        driver,
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        remark=remark,
+    )
+
+
+def create_new_enterprise_with_department(
+    driver: webdriver.Chrome | None = None,
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+) -> str:
+    """
+    Create a new enterprise in 外部组织维护, then create a department from that
+    new enterprise page's top-right 新建部门 button.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        enterprise_name: 企业名称；留空时自动生成。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        enterprise_remark: 企业备注信息；留空时自动生成。
+        department_name: 部门名称；留空时自动生成。
+        department_full_name: 部门全称；留空时默认使用部门名称 + 全称。
+        department_remark: 部门备注信息；留空时自动生成。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_new_enterprise_with_department(
+        driver,
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        enterprise_remark=enterprise_remark,
+        department_name=department_name,
+        department_full_name=department_full_name,
+        department_remark=department_remark,
+    )
+
+
+def create_new_enterprise_with_department_and_contact(
+    driver: webdriver.Chrome | None = None,
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+    contact_name: str = "",
+    contact_mobile: str = "",
+    contact_email: str = "",
+    contact_phone: str = "",
+    contact_remark: str = "",
+) -> str:
+    """
+    Create a new enterprise, create a department under it, then create an
+    external contact from that department page's 联系人 tab.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        enterprise_name: 企业名称；留空时自动生成。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        enterprise_remark: 企业备注信息；留空时自动生成。
+        department_name: 部门名称；留空时自动生成。
+        department_full_name: 部门全称；留空时默认使用部门名称 + 全称。
+        department_remark: 部门备注信息；留空时自动生成。
+        contact_name: 外部联系人姓名；留空时自动生成。
+        contact_mobile: 外部联系人手机；留空时自动生成。
+        contact_email: 外部联系人邮箱；留空时自动生成。
+        contact_phone: 外部联系人电话；留空时自动生成。
+        contact_remark: 外部联系人备注；留空时自动生成。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_new_enterprise_with_department_and_contact(
+        driver,
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        enterprise_remark=enterprise_remark,
+        department_name=department_name,
+        department_full_name=department_full_name,
+        department_remark=department_remark,
+        contact_name=contact_name,
+        contact_mobile=contact_mobile,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        contact_remark=contact_remark,
+    )
+
+
 def edit_person(
     driver: webdriver.Chrome | None = None,
     person_name: str = "",
@@ -2385,6 +2504,93 @@ def create_new_department_tool(department_name: str = "") -> str:
         department_name: 要创建的部门名称；留空时自动生成 xuyingtest + 时间戳。
     """
     return create_new_department(department_name=department_name)
+
+
+@function_tool(name_override="create_new_enterprise")
+def create_new_enterprise_tool(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure，点击左侧「外部组织维护」，
+    点击页面右上角「新建企业」，填写企业名称、企业全称和备注信息后保存。
+
+    Args:
+        enterprise_name: 企业名称；留空时自动生成 xuyingtest企业 + 时间戳。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        remark: 备注信息；留空时自动生成自动化测试备注。
+    """
+    return create_new_enterprise(
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        remark=remark,
+    )
+
+
+@function_tool(name_override="create_new_enterprise_with_department")
+def create_new_enterprise_with_department_tool(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure > 外部组织维护，先新建企业，
+    然后在这个新建企业页面右上角点击「新建部门」，填写部门信息并保存。
+
+    Args:
+        enterprise_name: 企业名称；留空时自动生成。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        enterprise_remark: 企业备注信息；留空时自动生成。
+        department_name: 部门名称；留空时自动生成。
+        department_full_name: 部门全称；留空时默认使用部门名称 + 全称。
+        department_remark: 部门备注信息；留空时自动生成。
+    """
+    return create_new_enterprise_with_department(
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        enterprise_remark=enterprise_remark,
+        department_name=department_name,
+        department_full_name=department_full_name,
+        department_remark=department_remark,
+    )
+
+
+@function_tool(name_override="create_new_enterprise_with_department_and_contact")
+def create_new_enterprise_with_department_and_contact_tool(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+    contact_name: str = "",
+    contact_mobile: str = "",
+    contact_email: str = "",
+    contact_phone: str = "",
+    contact_remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure > 外部组织维护，先新建企业，
+    再在企业下新建部门，然后进入该部门右侧「联系人」tab，点击「新建」，
+    填写新建外部联系人的必填信息并保存。
+    """
+    return create_new_enterprise_with_department_and_contact(
+        enterprise_name=enterprise_name,
+        enterprise_full_name=enterprise_full_name,
+        enterprise_remark=enterprise_remark,
+        department_name=department_name,
+        department_full_name=department_full_name,
+        department_remark=department_remark,
+        contact_name=contact_name,
+        contact_mobile=contact_mobile,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        contact_remark=contact_remark,
+    )
 
 
 @function_tool(name_override="edit_person")
@@ -2609,6 +2815,339 @@ def login_and_create_new_department(
         return "❌ 超时：无法找到登录表单元素或新建部门页面元素，请确认页面已正确加载。"
     except Exception as e:
         return f"❌ 登录并新建部门过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_new_enterprise")
+def login_and_create_new_enterprise(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整新建企业流程：登录 -> 进入 Org. Structure -> 外部组织维护 ->
+    新建企业 -> 填写企业名称/企业全称/备注信息 -> 保存 -> 停留 5 秒 -> 关闭浏览器。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+
+    Args:
+        enterprise_name: 企业名称；留空时自动生成 xuyingtest企业 + 时间戳。
+        enterprise_full_name: 企业全称；留空时默认使用企业名称 + 全称。
+        remark: 备注信息；留空时自动生成自动化测试备注。
+        username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
+        password: 登录密码。可留空以使用本地配置的密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        enterprise_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                enterprise_result = create_new_enterprise(
+                    driver,
+                    enterprise_name=enterprise_name,
+                    enterprise_full_name=enterprise_full_name,
+                    remark=remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            enterprise_success = enterprise_result.startswith("已完成新建企业流程")
+
+            if org_structure_success and enterprise_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新建企业。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新建企业完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + enterprise_result if enterprise_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新建企业。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新建企业。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建企业页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并新建企业过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_new_enterprise_with_department")
+def login_and_create_new_enterprise_with_department(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整流程：登录 -> Org. Structure -> 外部组织维护 -> 新建企业 ->
+    在新企业页面右上角点击新建部门 -> 填写部门信息 -> 保存 -> 关闭浏览器。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        enterprise_department_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                enterprise_department_result = create_new_enterprise_with_department(
+                    driver,
+                    enterprise_name=enterprise_name,
+                    enterprise_full_name=enterprise_full_name,
+                    enterprise_remark=enterprise_remark,
+                    department_name=department_name,
+                    department_full_name=department_full_name,
+                    department_remark=department_remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            flow_success = enterprise_department_result.startswith(
+                "已完成新建企业并在该企业下新建部门流程"
+            )
+
+            if org_structure_success and flow_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新企业下新建部门。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新企业下新建部门完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + enterprise_department_result if enterprise_department_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新企业下新建部门。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新企业下新建部门。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建企业/部门页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并在新企业下新建部门过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_new_enterprise_with_department_and_contact")
+def login_and_create_new_enterprise_with_department_and_contact(
+    enterprise_name: str = "",
+    enterprise_full_name: str = "",
+    enterprise_remark: str = "",
+    department_name: str = "",
+    department_full_name: str = "",
+    department_remark: str = "",
+    contact_name: str = "",
+    contact_mobile: str = "",
+    contact_email: str = "",
+    contact_phone: str = "",
+    contact_remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整流程：登录 -> Org. Structure -> 外部组织维护 -> 新建企业 ->
+    新建部门 -> 部门联系人tab -> 新建外部联系人 -> 填写必填信息 -> 保存。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        flow_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                flow_result = create_new_enterprise_with_department_and_contact(
+                    driver,
+                    enterprise_name=enterprise_name,
+                    enterprise_full_name=enterprise_full_name,
+                    enterprise_remark=enterprise_remark,
+                    department_name=department_name,
+                    department_full_name=department_full_name,
+                    department_remark=department_remark,
+                    contact_name=contact_name,
+                    contact_mobile=contact_mobile,
+                    contact_email=contact_email,
+                    contact_phone=contact_phone,
+                    contact_remark=contact_remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            flow_success = flow_result.startswith(
+                "已完成新建企业、新建部门并在该部门下新建外部联系人流程"
+            )
+
+            if org_structure_success and flow_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新部门下新建外部联系人。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新部门下新建外部联系人完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + flow_result if flow_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新部门下新建外部联系人。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新部门下新建外部联系人。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建外部联系人页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并在新部门下新建外部联系人过程发生异常: {str(e)}"
 
 
 @function_tool(name_override="login_and_edit_person")
