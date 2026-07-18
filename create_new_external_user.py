@@ -2,7 +2,7 @@
 Standalone Selenium helper for creating a new external enterprise in eTeams Org. Structure.
 
 Usage:
-    from create_new_enterprise import create_new_enterprise
+    from create_new_external_user import create_new_enterprise
     result = create_new_enterprise(driver)  # auto-generates enterprise data
     result = create_new_enterprise(
         driver,

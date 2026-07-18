@@ -31,10 +31,19 @@ logger = logging.getLogger(__name__)
 from create_public_group import create_public_group as _standalone_create_public_group
 from create_new_person import create_new_person as _standalone_create_new_person
 from create_new_department import create_new_department as _standalone_create_new_department
-from create_new_enterprise import (
+from create_new_external_user import (
     create_new_enterprise as _standalone_create_new_enterprise,
     create_new_enterprise_with_department_and_contact as _standalone_create_new_enterprise_with_department_and_contact,
     create_new_enterprise_with_department as _standalone_create_new_enterprise_with_department,
+)
+from create_external_user_category import (
+    create_external_user_category as _standalone_create_external_user_category,
+)
+from create_public_department_group import (
+    create_public_department_group as _standalone_create_public_department_group,
+)
+from create_office_location import (
+    create_office_location as _standalone_create_office_location,
 )
 from edit_person import (
     edit_person_employee_no_and_hire_date
@@ -2429,6 +2438,84 @@ def create_new_enterprise_with_department_and_contact(
     )
 
 
+def create_external_user_category(
+    driver: webdriver.Chrome | None = None,
+    category_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    Open Org. Structure / 外部用户分类设置 and create a new category.
+
+    Preconditions:
+    - The browser should already be logged in to eTeams.
+    - The helper will enter/verify Org. Structure before continuing.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        category_name: 外部用户分类名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_external_user_category(
+        driver,
+        category_name=category_name,
+        remark=remark,
+    )
+
+
+def create_public_department_group(
+    driver: webdriver.Chrome | None = None,
+    group_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    Open Org. Structure / 部门组管理 and create a new public department group.
+
+    Preconditions:
+    - The browser should already be logged in to eTeams.
+    - The helper will enter/verify Org. Structure before continuing.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        group_name: 公共部门组名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_public_department_group(
+        driver,
+        group_name=group_name,
+        remark=remark,
+    )
+
+
+def create_office_location(
+    driver: webdriver.Chrome | None = None,
+    location_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    Open Org. Structure / 办公地点 and create a new office location.
+
+    Preconditions:
+    - The browser should already be logged in to eTeams.
+    - The helper will enter/verify Org. Structure before continuing.
+
+    Args:
+        driver: Existing Selenium Chrome driver. If omitted, uses this module's
+            shared driver.
+        location_name: 办公地点名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    driver = driver or _get_driver()
+    return _standalone_create_office_location(
+        driver,
+        location_name=location_name,
+        remark=remark,
+    )
+
+
 def edit_person(
     driver: webdriver.Chrome | None = None,
     person_name: str = "",
@@ -2590,6 +2677,64 @@ def create_new_enterprise_with_department_and_contact_tool(
         contact_email=contact_email,
         contact_phone=contact_phone,
         contact_remark=contact_remark,
+    )
+
+
+@function_tool(name_override="create_external_user_category")
+def create_external_user_category_tool(
+    category_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure，点击左侧
+    「外部用户分类设置」二级菜单，点击右上角「新建」，
+    输入外部用户分类信息并保存。
+
+    Args:
+        category_name: 外部用户分类名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    return create_external_user_category(
+        category_name=category_name,
+        remark=remark,
+    )
+
+
+@function_tool(name_override="create_public_department_group")
+def create_public_department_group_tool(
+    group_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure，点击左侧「部门组管理」
+    二级菜单，点击右上角「新建」，输入公共部门组信息并保存。
+
+    Args:
+        group_name: 公共部门组名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    return create_public_department_group(
+        group_name=group_name,
+        remark=remark,
+    )
+
+
+@function_tool(name_override="create_office_location")
+def create_office_location_tool(
+    location_name: str = "",
+    remark: str = "",
+) -> str:
+    """
+    在已登录的 eTeams 中进入 Org. Structure，点击左侧「办公地点」
+    二级菜单，点击页面「新建」按钮，输入办公地点信息并保存。
+
+    Args:
+        location_name: 办公地点名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+    """
+    return create_office_location(
+        location_name=location_name,
+        remark=remark,
     )
 
 
@@ -2815,6 +2960,318 @@ def login_and_create_new_department(
         return "❌ 超时：无法找到登录表单元素或新建部门页面元素，请确认页面已正确加载。"
     except Exception as e:
         return f"❌ 登录并新建部门过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_external_user_category")
+def login_and_create_external_user_category(
+    category_name: str = "",
+    remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整新建外部用户分类流程：登录 -> 进入 Org. Structure ->
+    外部用户分类设置 -> 点击右上角新建 -> 输入分类信息 -> 保存。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+
+    Args:
+        category_name: 外部用户分类名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+        username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
+        password: 登录密码。可留空以使用本地配置的密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        category_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                category_result = create_external_user_category(
+                    driver,
+                    category_name=category_name,
+                    remark=remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            category_success = category_result.startswith("已完成新建外部用户分类流程")
+
+            if org_structure_success and category_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新建外部用户分类。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新建外部用户分类完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + category_result if category_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新建外部用户分类。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新建外部用户分类。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建外部用户分类页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并新建外部用户分类过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_public_department_group")
+def login_and_create_public_department_group(
+    group_name: str = "",
+    remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整新建公共部门组流程：登录 -> 进入 Org. Structure ->
+    部门组管理 -> 点击右上角新建 -> 输入公共部门组信息 -> 保存。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+
+    Args:
+        group_name: 公共部门组名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+        username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
+        password: 登录密码。可留空以使用本地配置的密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        group_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                group_result = create_public_department_group(
+                    driver,
+                    group_name=group_name,
+                    remark=remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            group_success = group_result.startswith("已完成新建公共部门组流程")
+
+            if org_structure_success and group_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新建公共部门组。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新建公共部门组完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + group_result if group_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新建公共部门组。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新建公共部门组。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建公共部门组页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并新建公共部门组过程发生异常: {str(e)}"
+
+
+@function_tool(name_override="login_and_create_office_location")
+def login_and_create_office_location(
+    location_name: str = "",
+    remark: str = "",
+    username: str = DEFAULT_ACCOUNT,
+    password: str = "",
+) -> str:
+    """
+    完整新建办公地点流程：登录 -> 进入 Org. Structure ->
+    办公地点 -> 点击页面新建按钮 -> 输入办公地点信息 -> 保存。
+
+    如果 password 为空，会使用环境变量 ETEAMS_PASSWORD 或本地默认密码。
+
+    Args:
+        location_name: 办公地点名称；留空时自动生成。
+        remark: 备注/描述；留空时自动生成。
+        username: 登录账号/手机号。默认使用本地配置的 eTeams 账号。
+        password: 登录密码。可留空以使用本地配置的密码。
+    """
+    driver = _get_driver()
+    try:
+        if not _login_form_is_present(driver):
+            driver.get(TARGET_URL)
+            _bring_driver_window_to_front(driver)
+        language_result = _set_language_to_simplified_chinese(driver)
+        _bring_driver_window_to_front(driver)
+
+        username = username or DEFAULT_ACCOUNT
+        password_to_use = password or _DEFAULT_PASSWORD
+        _fill_login_fields(driver, username, password_to_use)
+        privacy_result = _accept_privacy_terms_if_needed(driver)
+        submit_result = _click_login_button(driver)
+
+        outcome = _wait_for_login_result(driver)
+        password_prompt_result = _decline_save_password_prompt_if_possible(driver)
+        org_structure_result = ""
+        location_result = ""
+
+        if outcome.get("status") == "success":
+            org_structure_result = select_org_structure(driver)
+            if org_structure_result.startswith(("已选择", "已在", "已找到")):
+                location_result = create_office_location(
+                    driver,
+                    location_name=location_name,
+                    remark=remark,
+                )
+
+        current_url = driver.current_url
+        current_title = driver.title
+        messages = outcome.get("messages") or []
+
+        if outcome.get("status") == "success":
+            org_structure_success = org_structure_result.startswith(
+                ("已选择", "已在", "已找到")
+            )
+            location_success = location_result.startswith("已完成新建办公地点流程")
+
+            if org_structure_success and location_success:
+                result_status = "✅ 登录成功，已进入 Org. Structure，并已完成新建办公地点。"
+            elif org_structure_success:
+                result_status = "⚠️ 登录成功，并已进入 Org. Structure，但未确认新建办公地点完成。"
+            else:
+                result_status = "⚠️ 登录成功，但未确认已进入/选择 Org. Structure。"
+
+            result = (
+                f"{result_status}"
+                f" 已看到左上角登录用户，登录用户区域: {outcome.get('top_left_user')}。"
+                f" {submit_result}"
+                f" {org_structure_result}"
+                f"{' ' + location_result if location_result else ''}"
+                f" {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        elif outcome.get("status") == "failed" and messages:
+            result = (
+                "❌ 登录未完成。页面提示: "
+                + "；".join(messages)
+                + f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+            )
+        elif outcome.get("page_changed"):
+            result = (
+                "⚠️ 页面已跳转或进入下一步，但未确认左上角登录用户，"
+                "因此未按成功判定，也未执行新建办公地点。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+        else:
+            result = (
+                "⚠️ 已提交登录，但结果不明确；未看到左上角登录用户，"
+                "因此未执行新建办公地点。"
+                f" {submit_result} {language_result} {privacy_result} {password_prompt_result}"
+                f" 当前 URL: {current_url}，页面标题: {current_title}"
+            )
+
+        time.sleep(DEFAULT_CLOSE_DELAY_SECONDS)
+        _close_driver()
+        return f"{result}\n已停留 {DEFAULT_CLOSE_DELAY_SECONDS} 秒并关闭浏览器。"
+
+    except TimeoutException:
+        return "❌ 超时：无法找到登录表单元素或新建办公地点页面元素，请确认页面已正确加载。"
+    except Exception as e:
+        return f"❌ 登录并新建办公地点过程发生异常: {str(e)}"
 
 
 @function_tool(name_override="login_and_create_new_enterprise")
